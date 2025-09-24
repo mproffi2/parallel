@@ -1,14 +1,15 @@
-CXX = g++
-CXXFLAGS = -std=c++17
-LDFLAGS = -lcurl -lpthread
+CXXFLAGS=-I $(HOME)/rapidjson
+LDFLAGS=-lcurl
+LD=g++
+CC=g++
 
 all: par_level_client
 
 par_level_client: par_level_client.o
-	$(CXX) $< -o $@ $(LDFLAGS)
+	$(LD) $< -o $@ $(LDFLAGS)
 
 par_level_client.o: par_level_client.cpp
-	$(CXX) -c par_level_client.cpp $(CXXFLAGS)
+	$(CC) -c par_level_client.cpp $(CXXFLAGS)
 
 clean:
-	rm -f par_level_client par_level_client.o
+	-rm par_level_client par_level_client.o
