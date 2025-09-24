@@ -11,7 +11,6 @@
 #include <future>
 #include <thread>
 
-
 struct ParseException : std::runtime_error, rapidjson::ParseResult {
     ParseException(rapidjson::ParseErrorCode code, const char* msg, size_t offset) : 
         std::runtime_error(msg), 
@@ -24,7 +23,6 @@ struct ParseException : std::runtime_error, rapidjson::ParseResult {
 #include <rapidjson/document.h>
 #include <chrono>
 
-
 bool debug = false;
 
 size_t max_threads = 0;
@@ -32,12 +30,12 @@ size_t max_threads = 0;
 // Updated service URL
 const std::string SERVICE_URL = "http://hollywood-graph-crawler.bridgesuncc.org/neighbors/";
 
-// Function to HTTP ecnode parts of URLs. for instance, replace spaces with '%20' for URLs
+// Function to HTTP encode parts of URLs. for instance, replace spaces with '%20' for URLs
 std::string url_encode(CURL* curl, std::string input) {
-  char* out = curl_easy_escape(curl, input.c_str(), input.size());
-  std::string s = out;
-  curl_free(out);
-  return s;
+    char* out = curl_easy_escape(curl, input.c_str(), input.size());
+    std::string s = out;
+    curl_free(out);
+    return s;
 }
 
 // Callback function for writing response data
@@ -49,20 +47,17 @@ size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* out
 
 // Function to fetch neighbors using libcurl with debugging
 std::string fetch_neighbors(CURL* curl, const std::string& node) {
-
-  std::string url = SERVICE_URL + url_encode(curl, node);
-  std::string response;
+    std::string url = SERVICE_URL + url_encode(curl, node);
+    std::string response;
 
     if (debug)
-      std::cout << "Sending request to: " << url << std::endl;
+        std::cout << "Sending request to: " << url << std::endl;
 
     curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
     curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
-    // curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L); // Verbose Logging
 
-    // Set a User-Agent header to avoid potential blocking by the server
     struct curl_slist* headers = nullptr;
     headers = curl_slist_append(headers, "User-Agent: C++-Client/1.0");
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
@@ -70,17 +65,16 @@ std::string fetch_neighbors(CURL* curl, const std::string& node) {
     CURLcode res = curl_easy_perform(curl);
 
     if (res != CURLE_OK) {
-      std::cerr << "CURL error: " << curl_easy_strerror(res) << std::endl;
+        std::cerr << "CURL error: " << curl_easy_strerror(res) << std::endl;
     } else {
-      if (debug)
-        std::cout << "CURL request successful!" << std::endl;
+        if (debug)
+            std::cout << "CURL request successful!" << std::endl;
     }
 
-    // Cleanup
     curl_slist_free_all(headers);
 
-    if (debug) 
-      std::cout << "Response received: " << response << std::endl;  // Debug log
+    if (debug)
+        std::cout << "Response received: " << response << std::endl;
 
     return (res == CURLE_OK) ? response : "{}";
 }
@@ -89,16 +83,16 @@ std::string fetch_neighbors(CURL* curl, const std::string& node) {
 std::vector<std::string> get_neighbors(const std::string& json_str) {
     std::vector<std::string> neighbors;
     try {
-      rapidjson::Document doc;
-      doc.Parse(json_str.c_str());
-      
-      if (doc.HasMember("neighbors") && doc["neighbors"].IsArray()) {
-        for (const auto& neighbor : doc["neighbors"].GetArray())
-	  neighbors.push_back(neighbor.GetString());
-      }
+        rapidjson::Document doc;
+        doc.Parse(json_str.c_str());
+
+        if (doc.HasMember("neighbors") && doc["neighbors"].IsArray()) {
+            for (const auto& neighbor : doc["neighbors"].GetArray())
+                neighbors.push_back(neighbor.GetString());
+        }
     } catch (const ParseException& e) {
-      std::cerr<<"Error while parsing JSON: "<<json_str<<std::endl;
-      throw e;
+        std::cerr << "Error while parsing JSON: " << json_str << std::endl;
+        throw e;
     }
     return neighbors;
 }
@@ -137,11 +131,6 @@ std::vector<std::vector<std::string>> bfs(CURL* /*unused*/, const std::string& s
             std::vector<std::future<std::vector<std::string>>> futures;
 
             for (const std::string& s : levels[d]) {
-                while (max_threads && futures.size() >= max_threads) {
-                    futures.front().wait();
-                    futures.erase(futures.begin());
-                }
-
                 futures.push_back(std::async(std::launch::async, [s]() {
                     CURL* curl_local = curl_easy_init();
                     if (!curl_local) throw std::runtime_error("Failed to init CURL");
@@ -151,7 +140,7 @@ std::vector<std::vector<std::string>> bfs(CURL* /*unused*/, const std::string& s
                 }));
             }
 
-            // Collect results
+            // Collect results after all tasks at this level are submitted
             for (auto& fut : futures) {
                 try {
                     for (const auto& neighbor : fut.get()) {
