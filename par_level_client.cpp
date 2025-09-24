@@ -118,22 +118,19 @@ std::vector<std::vector<std::string>> bfs(CURL* /*unused*/, const std::string& s
         std::vector<std::future<std::vector<std::string>>> futures;
 
         for (const std::string& s : levels[d]) {
-    // if we already have max_threads running, wait for one to finish
-    if (max_threads && futures.size() >= max_threads) {
-        futures.front().wait();
-        futures.erase(futures.begin());
-    }
+            futures.push_back(std::async(std::launch::async, [s]() {
+                CURL* curl_local = curl_easy_init();
+                if (!curl_local) throw std::runtime_error("Failed to init CURL");
+                std::string json = fetch_neighbors(curl_local, s);
+                curl_easy_cleanup(curl_local);
+                return get_neighbors(json);
+            }));
+            while (max_threads && futures.size() >= max_threads) {
+                futures.front().wait();
+                futures.erase(futures.begin());
+            }
+        }
 
-    futures.push_back(std::async(std::launch::async, [s]() {
-        CURL* curl_local = curl_easy_init();
-        if (!curl_local) throw std::runtime_error("Failed to init CURL");
-        std::string json = fetch_neighbors(curl_local, s);
-        curl_easy_cleanup(curl_local);
-        return get_neighbors(json);
-    }));
-}
-
-        // Collect results
         for (auto& fut : futures) {
             try {
                 for (const auto& neighbor : fut.get()) {
@@ -183,15 +180,16 @@ int main(int argc, char* argv[]) {
         if (max_threads == 0) max_threads = 4;
     }
 
-    CURL* curl = curl_easy_init();
-    if (!curl) {
-        std::cerr << "Failed to initialize CURL\n";
-        return -1;
+    CURLcode global_init = curl_global_init(CURL_GLOBAL_ALL);
+    if (global_init != CURLE_OK) {
+        std::cerr << "curl_global_init() failed: " 
+                  << curl_easy_strerror(global_init) << std::endl;
+        return 1;
     }
 
     const auto start{std::chrono::steady_clock::now()};
 
-    for (const auto& n : bfs(curl, start_node, depth)) {
+    for (const auto& n : bfs(nullptr, start_node, depth)) {
         for (const auto& node : n)
             std::cout << "- " << node << "\n";
         std::cout << n.size() << "\n";
@@ -201,6 +199,7 @@ int main(int argc, char* argv[]) {
     const std::chrono::duration<double> elapsed_seconds{finish - start};
     std::cout << "Time to crawl: " << elapsed_seconds.count() << "s\n";
 
-    curl_easy_cleanup(curl);
+    curl_global_cleanup();
+
     return 0;
 }
