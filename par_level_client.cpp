@@ -103,7 +103,7 @@ std::vector<std::string> get_neighbors(const std::string& json_str) {
     return neighbors;
 }
 
-// Parallel BFS Traversal Function
+// Parallel / Serial BFS Traversal Function
 std::vector<std::vector<std::string>> bfs(CURL* /*unused*/, const std::string& start, int depth) {
     std::vector<std::vector<std::string>> levels;
     std::unordered_set<std::string> visited;
@@ -115,36 +115,59 @@ std::vector<std::vector<std::string>> bfs(CURL* /*unused*/, const std::string& s
         if (debug) std::cout << "starting level: " << d << "\n";
 
         levels.push_back({});
-        std::vector<std::future<std::vector<std::string>>> futures;
 
-        for (const std::string& s : levels[d]) {
-            futures.push_back(std::async(std::launch::async, [s]() {
-                CURL* curl_local = curl_easy_init();
-                if (!curl_local) throw std::runtime_error("Failed to init CURL");
+        if (max_threads == 1) {
+            // Sequential version
+            CURL* curl_local = curl_easy_init();
+            if (!curl_local) throw std::runtime_error("Failed to init CURL");
+
+            for (const std::string& s : levels[d]) {
                 std::string json = fetch_neighbors(curl_local, s);
-                curl_easy_cleanup(curl_local);
-                return get_neighbors(json);
-            }));
-            while (max_threads && futures.size() >= max_threads) {
-                futures.front().wait();
-                futures.erase(futures.begin());
-            }
-        }
-
-        for (auto& fut : futures) {
-            try {
-                for (const auto& neighbor : fut.get()) {
+                for (const auto& neighbor : get_neighbors(json)) {
                     if (!visited.count(neighbor)) {
                         visited.insert(neighbor);
                         levels[d + 1].push_back(neighbor);
                     }
                 }
-            } catch (const ParseException& e) {
-                std::cerr << "Error while fetching neighbors in parallel task\n";
-                throw;
+            }
+            curl_easy_cleanup(curl_local);
+
+        } else {
+            // Parallel version
+            std::vector<std::future<std::vector<std::string>>> futures;
+
+            for (const std::string& s : levels[d]) {
+                while (max_threads && futures.size() >= max_threads) {
+                    futures.front().wait();
+                    futures.erase(futures.begin());
+                }
+
+                futures.push_back(std::async(std::launch::async, [s]() {
+                    CURL* curl_local = curl_easy_init();
+                    if (!curl_local) throw std::runtime_error("Failed to init CURL");
+                    std::string json = fetch_neighbors(curl_local, s);
+                    curl_easy_cleanup(curl_local);
+                    return get_neighbors(json);
+                }));
+            }
+
+            // Collect results
+            for (auto& fut : futures) {
+                try {
+                    for (const auto& neighbor : fut.get()) {
+                        if (!visited.count(neighbor)) {
+                            visited.insert(neighbor);
+                            levels[d + 1].push_back(neighbor);
+                        }
+                    }
+                } catch (const ParseException& e) {
+                    std::cerr << "Error while fetching neighbors in parallel task\n";
+                    throw;
+                }
             }
         }
     }
+
     return levels;
 }
 
